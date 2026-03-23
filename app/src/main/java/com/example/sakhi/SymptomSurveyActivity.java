@@ -1,6 +1,7 @@
 package com.example.sakhi;
 
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.view.View;
@@ -12,23 +13,14 @@ import android.widget.TextView;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 
-import com.google.ai.client.generativeai.GenerativeModel;
-import com.google.ai.client.generativeai.java.GenerativeModelFutures;
-import com.google.ai.client.generativeai.type.Content;
-import com.google.ai.client.generativeai.type.GenerateContentResponse;
-import com.google.common.util.concurrent.FutureCallback;
-import com.google.common.util.concurrent.Futures;
-import com.google.common.util.concurrent.ListenableFuture;
-
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.Executor;
-import java.util.concurrent.Executors;
+
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
 
 public class SymptomSurveyActivity extends AppCompatActivity {
-
-    // ▼▼▼ PASTE YOUR KEY HERE ▼▼▼
-    private static final String API_KEY = "AIzaSyBqJTgeLli1JyQvA5QImtbHBCsrzZc6pXQ";
 
     TextView tvCondition;
     LinearLayout questionsContainer;
@@ -42,84 +34,104 @@ public class SymptomSurveyActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_symptom_survey);
 
+        // Initialize Views
         tvCondition = findViewById(R.id.tvSuspectedCondition);
         questionsContainer = findViewById(R.id.questionsContainer);
         btnAnalyze = findViewById(R.id.btnAnalyze);
         progressBar = findViewById(R.id.progressBar);
 
-        // 1. Get the suspected condition
+        // 1. Get the suspected condition from Intent
         conditionName = getIntent().getStringExtra("CONDITION_NAME");
         if (conditionName == null) conditionName = "Unknown Issue";
 
         tvCondition.setText("Checking for: " + conditionName);
 
-        // 2. Generate Questions using AI
+        // 2. Trigger AI Question Generation
         generateQuestions(conditionName);
 
-        // 3. Analyze Results
+        // 3. Set Analyze Button Listener
         btnAnalyze.setOnClickListener(v -> analyzeResults());
 
+        // Back Button Logic
         findViewById(R.id.btnBack).setOnClickListener(v -> {
             onBackPressed();
-            overridePendingTransition(
-                    android.R.anim.slide_in_left,
-                    android.R.anim.slide_out_right
-            );
+            overridePendingTransition(android.R.anim.slide_in_left, android.R.anim.slide_out_right);
         });
     }
 
+    @Override
     public void onBackPressed() {
         if (!isTaskRoot()) {
-            super.onBackPressed(); // go to previous screen
+            super.onBackPressed();
         } else {
-            // No previous screen → go to Home
+            // Fallback to Chat if there's no activity stack
             startActivity(new Intent(this, SymptomChatActivity.class));
             finish();
         }
     }
 
     private void generateQuestions(String condition) {
-        GenerativeModel gm = new GenerativeModel("gemini-2.5-flash", API_KEY);
-        GenerativeModelFutures model = GenerativeModelFutures.from(gm);
+        progressBar.setVisibility(View.VISIBLE);
+        btnAnalyze.setVisibility(View.GONE); // Hide until questions are ready
 
-        // Smart Prompt: Ask AI for exactly 3 questions separated by pipes (|)
-        String prompt = "Generate exactly 3 simple Yes/No diagnostic questions to confirm if a patient has " + condition + ". " +
-                "Return ONLY the questions separated by a pipe symbol (|). " +
-                "Example: Do you feel dizzy?|Is your skin pale?|Do you have cold hands?";
+        // Prepare the messages for the OpenRouter API
+        List<Message> messages = new ArrayList<>();
+        messages.add(new Message("user", "Generate exactly 3 simple Yes/No diagnostic questions to confirm if a patient has " + condition + ". Return ONLY the questions separated by a pipe symbol (|). Example: Question 1|Question 2|Question 3"));
 
-        Content content = new Content.Builder().addText(prompt).build();
-        Executor executor = Executors.newSingleThreadExecutor();
-        ListenableFuture<GenerateContentResponse> response = model.generateContent(content);
+        // Create Request (Model name must match OpenRouter format)
+        // UPDATED MODEL ID FOR 2026
+        OpenRouterRequest request = new OpenRouterRequest("google/gemini-2.0-flash-001", messages);
 
-        Futures.addCallback(response, new FutureCallback<GenerateContentResponse>() {
-            @Override
-            public void onSuccess(GenerateContentResponse result) {
-                String rawText = result.getText().trim();
-                // Split the AI response into 3 questions
-                String[] questions = rawText.split("\\|");
+        // API Call using Retrofit
+        OpenRouterClient.getInterface().getChatCompletion("Bearer " + BuildConfig.OPENROUTER_KEY, request)
+                .enqueue(new Callback<OpenRouterResponse>() {
+                    @Override
+                    public void onResponse(Call<OpenRouterResponse> call, Response<OpenRouterResponse> response) {
+                        if (response.isSuccessful() && response.body() != null && response.body().choices != null) {
+                            String rawText = response.body().choices.get(0).message.content.trim();
 
-                runOnUiThread(() -> {
-                    progressBar.setVisibility(View.GONE);
+                            // Split questions by pipe character
+                            final String[] questions = rawText.split("\\|");
 
-                    // Create a Checkbox for each question
-                    for (String q : questions) {
-                        CheckBox cb = new CheckBox(SymptomSurveyActivity.this);
-                        cb.setText(q.trim());
-                        cb.setTextSize(16f);
-                        cb.setPadding(0, 20, 0, 20);
-                        cb.setTextColor(Color.BLACK);
-                        questionsContainer.addView(cb);
-                        checkBoxes.add(cb);
+                            runOnUiThread(() -> {
+                                progressBar.setVisibility(View.GONE);
+                                questionsContainer.removeAllViews(); // Clear existing views
+                                checkBoxes.clear();
+
+                                for (String q : questions) {
+                                    if (!q.trim().isEmpty()) {
+                                        CheckBox cb = new CheckBox(SymptomSurveyActivity.this);
+                                        cb.setText(q.trim());
+                                        cb.setTextSize(16f);
+                                        cb.setPadding(0, 30, 0, 30); // Better spacing
+                                        cb.setTextColor(Color.BLACK);
+
+                                        questionsContainer.addView(cb);
+                                        checkBoxes.add(cb);
+                                    }
+                                }
+                                if (!checkBoxes.isEmpty()) {
+                                    btnAnalyze.setVisibility(View.VISIBLE);
+                                } else {
+                                    Toast.makeText(SymptomSurveyActivity.this, "AI returned invalid format. Try again.", Toast.LENGTH_SHORT).show();
+                                }
+                            });
+                        } else {
+                            runOnUiThread(() -> {
+                                progressBar.setVisibility(View.GONE);
+                                Toast.makeText(SymptomSurveyActivity.this, "Error: " + response.code(), Toast.LENGTH_SHORT).show();
+                            });
+                        }
                     }
-                    btnAnalyze.setVisibility(View.VISIBLE);
-                });
-            }
 
-            @Override
-            public void onFailure(Throwable t) {
-                runOnUiThread(() -> Toast.makeText(SymptomSurveyActivity.this, "Error: " + t.getMessage(), Toast.LENGTH_SHORT).show());
-            }
-        }, executor);
+                    @Override
+                    public void onFailure(Call<OpenRouterResponse> call, Throwable t) {
+                        runOnUiThread(() -> {
+                            progressBar.setVisibility(View.GONE);
+                            Toast.makeText(SymptomSurveyActivity.this, "Network Error: " + t.getMessage(), Toast.LENGTH_SHORT).show();
+                        });
+                    }
+                });
     }
 
     private void analyzeResults() {
@@ -128,17 +140,22 @@ public class SymptomSurveyActivity extends AppCompatActivity {
             if (cb.isChecked()) yesCount++;
         }
 
-        // Logic: If they said YES to at least 2 questions, we confirm it.
-        Intent intent = new Intent(SymptomSurveyActivity.this, SymptomSummaryActivity.class);
+        // Logic: If user says 'Yes' to at least 2 questions, confirm the condition
+        String finalCondition = (yesCount >= 2) ? conditionName : "General Health Issue";
 
-        if (yesCount >= 2) {
-            // Confirmed!
-            intent.putExtra("CONDITION_NAME", conditionName);
-        } else {
-            // Not sure
-            intent.putExtra("CONDITION_NAME", "General Health Issue");
+        // --- PERSISTENCE LOGIC (The "Sakhi" Special) ---
+        // Store the date of first report to track 3-day/7-day severity
+        SharedPreferences prefs = getSharedPreferences("SakhiHealthHistory", MODE_PRIVATE);
+        String key = "first_report_" + finalCondition.toLowerCase().replace(" ", "_");
+
+        if (!prefs.contains(key)) {
+            // Save current time as the "First Report" timestamp
+            prefs.edit().putLong(key, System.currentTimeMillis()).apply();
         }
 
+        // Navigate to Summary screen
+        Intent intent = new Intent(SymptomSurveyActivity.this, SymptomSummaryActivity.class);
+        intent.putExtra("CONDITION_NAME", finalCondition);
         startActivity(intent);
         finish();
     }

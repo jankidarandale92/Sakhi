@@ -2,138 +2,101 @@ package com.example.sakhi;
 
 import android.content.Intent;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.View;
 import android.widget.EditText;
-import android.widget.ImageButton;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
-
-import com.google.ai.client.generativeai.GenerativeModel;
-import com.google.ai.client.generativeai.java.GenerativeModelFutures;
-import com.google.ai.client.generativeai.type.Content;
-import com.google.ai.client.generativeai.type.GenerateContentResponse;
-import com.google.common.util.concurrent.FutureCallback;
-import com.google.common.util.concurrent.Futures;
-import com.google.common.util.concurrent.ListenableFuture;
-
-import java.util.concurrent.Executor;
-import java.util.concurrent.Executors;
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
+import java.util.ArrayList;
+import java.util.List;
 
 public class SymptomChatActivity extends AppCompatActivity {
-
-    // ▼▼▼ USE 1.5-FLASH (2.5 DOES NOT EXIST) ▼▼▼
-    private static final String API_KEY = "AIzaSyCha9Bcd6vysEQeaJVgnEbWE9jlTKB4Jag";
-
     TextView tvAIQuestion, tvTitle;
     EditText etMessage;
-    ImageButton btnSend;
     ProgressBar progressBar;
-
-    GenerativeModelFutures model;
-    StringBuilder conversationHistory = new StringBuilder();
+    List<Message> messages = new ArrayList<>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_symptom_chat);
 
-        // Initialize Views
         tvTitle = findViewById(R.id.tvTitle);
         tvAIQuestion = findViewById(R.id.tvAIQuestion);
         etMessage = findViewById(R.id.etMessage);
-        btnSend = findViewById(R.id.btnSend);
         progressBar = findViewById(R.id.progressBar);
 
-        // Setup AI Model (gemini-1.5-flash is currently the standard fast model)
-        GenerativeModel gm = new GenerativeModel("gemini-2.5-flash", API_KEY);
-        model = GenerativeModelFutures.from(gm);
-
-        btnSend.setOnClickListener(v -> sendMessage());
-        findViewById(R.id.btnBack).setOnClickListener(v -> {
-            onBackPressed();
-            overridePendingTransition(
-                    android.R.anim.slide_in_left,
-                    android.R.anim.slide_out_right
-            );
-        });
-    }
-
-    @Override
-    public void onBackPressed() {
-        if (!isTaskRoot()) {
-            super.onBackPressed(); // go to previous screen
-        } else {
-            // No previous screen → go to Home
-            startActivity(new Intent(this, HomeActivity.class));
-            finish();
-        }
+        findViewById(R.id.btnSend).setOnClickListener(v -> sendMessage());
+        findViewById(R.id.btnBack).setOnClickListener(v -> onBackPressed());
     }
 
     private void sendMessage() {
         String userMsg = etMessage.getText().toString().trim();
         if (userMsg.isEmpty()) return;
 
-        // 1. Update UI to show loading
         etMessage.setText("");
         progressBar.setVisibility(View.VISIBLE);
-        tvAIQuestion.setText("Analyzing your symptoms...");
         tvTitle.setText("Thinking...");
 
-        // 2. Add to history
-        conversationHistory.append("User: ").append(userMsg).append("\n");
+        if (messages.isEmpty()) {
+            messages.add(new Message("system", "You are Sakhi, a women's health triage assistant. If you suspect a condition (PCOS, Anemia, Thyroid, etc), reply ONLY with [POSSIBLE: ConditionName]. Otherwise ask a short, empathetic follow-up question."));
+        }
+        messages.add(new Message("user", userMsg));
 
-        // --- DOCTOR PROMPT ---
-        String systemPrompt = "You are a medical triage assistant for women.\n" +
-                "Conversation History:\n" + conversationHistory.toString() + "\n" +
-                "Instructions:\n" +
-                "1. Ask clarification questions if needed (one at a time).\n" +
-                "2. If you suspect a specific condition (e.g., PCOS, Anemia, Migraine, Thyroid, etc.), do NOT diagnose immediately.\n" +
-                "3. Instead, output this specific code: [POSSIBLE: Condition Name]\n" +
-                "4. Example: '[POSSIBLE: Thyroid]'\n" +
-                "5. If not sure yet, just reply normally.";
+        // --- UPDATED MODEL ID ---
+        // OpenRouter often prefers the full path. Try "google/gemini-flash-1.5"
+        // If 404 persists, try "google/gemini-flash-1.5-8b"
+        // UPDATED MODEL ID FOR 2026
+        OpenRouterRequest request = new OpenRouterRequest("google/gemini-2.0-flash-001", messages);
 
-        // 4. Call AI
-        Content content = new Content.Builder().addText(systemPrompt).build();
-        Executor executor = Executors.newSingleThreadExecutor();
-        ListenableFuture<GenerateContentResponse> response = model.generateContent(content);
+        OpenRouterClient.getInterface().getChatCompletion("Bearer " + BuildConfig.OPENROUTER_KEY, request)
+                .enqueue(new Callback<OpenRouterResponse>() {
+                    @Override
+                    public void onResponse(Call<OpenRouterResponse> call, Response<OpenRouterResponse> response) {
+                        progressBar.setVisibility(View.GONE);
 
-        Futures.addCallback(response, new FutureCallback<GenerateContentResponse>() {
-            @Override
-            public void onSuccess(GenerateContentResponse result) {
-                String aiReply = result.getText().trim();
-                conversationHistory.append("AI: ").append(aiReply).append("\n");
+                        if (response.isSuccessful() && response.body() != null && response.body().choices != null && !response.body().choices.isEmpty()) {
+                            String reply = response.body().choices.get(0).message.content;
+                            messages.add(new Message("assistant", reply));
 
-                runOnUiThread(() -> {
-                    progressBar.setVisibility(View.GONE);
+                            if (reply.contains("[POSSIBLE:")) {
+                                try {
+                                    String condition = reply.substring(reply.indexOf(":") + 1, reply.indexOf("]")).trim();
+                                    Intent i = new Intent(SymptomChatActivity.this, SymptomSurveyActivity.class);
+                                    i.putExtra("CONDITION_NAME", condition);
+                                    startActivity(i);
+                                    finish();
+                                } catch (Exception e) {
+                                    tvAIQuestion.setText(reply); // Fallback to showing the text
+                                }
+                            } else {
+                                tvTitle.setText("Sakhi");
+                                tvAIQuestion.setText(reply);
+                            }
+                        } else {
+                            // Detailed error logging
+                            Log.e("SakhiError", "Code: " + response.code() + " Message: " + response.message());
+                            tvAIQuestion.setText("AI Error: " + response.code() + ". Check Model ID or API Key.");
+                        }
+                    }
 
-                    if (aiReply.contains("[POSSIBLE:")) {
-                        // --- SUCCESS: Condition Found ---
-                        String condition = aiReply.substring(aiReply.indexOf(":") + 1, aiReply.indexOf("]")).trim();
-
-                        // Navigate to Survey
-                        Intent intent = new Intent(SymptomChatActivity.this, SymptomSurveyActivity.class);
-                        intent.putExtra("CONDITION_NAME", condition);
-                        startActivity(intent);
-                        finish();
-                    } else {
-                        // --- NEED MORE INFO: Update the Card ---
-                        tvTitle.setText("Follow Up");
-                        tvAIQuestion.setText(aiReply); // Replaces the old text with the new question
+                    @Override
+                    public void onFailure(Call<OpenRouterResponse> call, Throwable t) {
+                        progressBar.setVisibility(View.GONE);
+                        Log.e("SakhiError", "Failure: " + t.getMessage());
+                        tvAIQuestion.setText("Connection failed. Check your internet.");
                     }
                 });
-            }
+    }
 
-            @Override
-            public void onFailure(Throwable t) {
-                runOnUiThread(() -> {
-                    progressBar.setVisibility(View.GONE);
-                    tvTitle.setText("Error");
-                    tvAIQuestion.setText("Something went wrong. Please try again.");
-                    Toast.makeText(SymptomChatActivity.this, "Error: " + t.getMessage(), Toast.LENGTH_SHORT).show();
-                });
-            }
-        }, executor);
+    @Override
+    public void onBackPressed() {
+        super.onBackPressed();
+        finish();
     }
 }

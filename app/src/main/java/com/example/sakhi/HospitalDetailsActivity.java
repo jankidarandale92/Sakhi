@@ -3,7 +3,6 @@ package com.example.sakhi;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
-import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.ImageView;
@@ -11,19 +10,9 @@ import android.widget.TextView;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 
-import org.json.JSONObject;
-
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.net.URLEncoder;
-import java.util.Iterator;
-
 public class HospitalDetailsActivity extends AppCompatActivity {
 
-    private TextView desc;
-    private String hospitalName;
+    private String extractedPhone = "Not Available";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -34,106 +23,95 @@ public class HospitalDetailsActivity extends AppCompatActivity {
         ImageView img = findViewById(R.id.detailImage);
         TextView title = findViewById(R.id.detailTitle);
         TextView loc = findViewById(R.id.detailLocation);
-        desc = findViewById(R.id.detailDescription);
+        TextView desc = findViewById(R.id.detailDescription);
         ImageView verified = findViewById(R.id.detailVerified);
         Button btnDirection = findViewById(R.id.btnDirection);
+        Button btnCall = findViewById(R.id.btnCall);
+        ImageView btnBack = findViewById(R.id.btnBack);
 
-        // 2. Get Data passed from MainActivity
-        hospitalName = getIntent().getStringExtra("NAME");
-        String locData = getIntent().getStringExtra("LOCATION");
+        // 2. Get Data
+        String hospitalName = getIntent().getStringExtra("NAME");
+        String distanceData = getIntent().getStringExtra("LOCATION");
+        String description = getIntent().getStringExtra("DESC");
+        int imageRes = getIntent().getIntExtra("IMAGE", R.drawable.map_image);
         boolean isVerified = getIntent().getBooleanExtra("VERIFIED", false);
 
-        // 3. Set Basic Data
-        title.setText(hospitalName);
-        loc.setText(locData);
+        // 3. Set UI
+        title.setText(hospitalName != null ? hospitalName : "Hospital");
+        loc.setText(distanceData != null ? distanceData : "Location not available");
+        img.setImageResource(imageRes);
 
-        if (isVerified) {
-            verified.setVisibility(View.VISIBLE);
+        if (description != null && !description.isEmpty()) {
+            desc.setText(description);
+            extractedPhone = extractPhone(description); // 🔥 SAFE EXTRACTION
         } else {
-            verified.setVisibility(View.GONE);
+            desc.setText("Verified healthcare facility. No additional details available.");
         }
 
-        // 4. FETCH REAL-TIME DATA (Updated Logic)
-        fetchWikipediaDetails(hospitalName);
+        verified.setVisibility(isVerified ? View.VISIBLE : View.GONE);
 
-        // 5. Direction Button Logic
+        // ✅ 4. DIRECTIONS (MORE ACCURATE)
         btnDirection.setOnClickListener(v -> {
-            Uri gmmIntentUri = Uri.parse("google.navigation:q=" + Uri.encode(hospitalName + " " + locData));
-            Intent mapIntent = new Intent(Intent.ACTION_VIEW, gmmIntentUri);
-            mapIntent.setPackage("com.google.android.apps.maps");
+            if (hospitalName != null && distanceData != null) {
 
-            try {
-                startActivity(mapIntent);
-            } catch (Exception e) {
-                Toast.makeText(this, "Opening in browser...", Toast.LENGTH_SHORT).show();
-                Intent browserIntent = new Intent(Intent.ACTION_VIEW,
-                        Uri.parse("https://www.google.com/maps/dir/?api=1&destination=" + Uri.encode(hospitalName)));
-                startActivity(browserIntent);
+                // Better search query
+                String query = hospitalName + " " + distanceData;
+
+                Uri gmmIntentUri = Uri.parse("google.navigation:q=" + Uri.encode(query));
+                Intent mapIntent = new Intent(Intent.ACTION_VIEW, gmmIntentUri);
+                mapIntent.setPackage("com.google.android.apps.maps");
+
+                try {
+                    startActivity(mapIntent);
+                } catch (Exception e) {
+                    Toast.makeText(this, "Opening in browser...", Toast.LENGTH_SHORT).show();
+
+                    Uri webUri = Uri.parse("https://www.google.com/maps/search/?api=1&query=" + Uri.encode(query));
+                    startActivity(new Intent(Intent.ACTION_VIEW, webUri));
+                }
+            } else {
+                Toast.makeText(this, "Location data missing", Toast.LENGTH_SHORT).show();
             }
         });
+
+        // ✅ 5. CALL BUTTON (SAFE + STRICT)
+        btnCall.setOnClickListener(v -> {
+
+            if (extractedPhone.equals("Not Available") || extractedPhone.length() < 8) {
+                Toast.makeText(this, "No verified phone available for this hospital.", Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            try {
+                Intent intent = new Intent(Intent.ACTION_DIAL);
+                intent.setData(Uri.parse("tel:" + extractedPhone));
+                startActivity(intent);
+            } catch (Exception e) {
+                Toast.makeText(this, "Unable to open dialer.", Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        // 6. BACK
+        btnBack.setOnClickListener(v -> finish());
     }
 
-    // --- Helper Method: Fetch Wiki Data with Smart Search ---
-    private void fetchWikipediaDetails(String query) {
-        // Set loading text
-        runOnUiThread(() -> desc.setText("Searching Wikipedia for info..."));
+    // ✅ SAFE PHONE EXTRACTION METHOD (VERY IMPORTANT 🔥)
+    private String extractPhone(String description) {
+        try {
+            if (!description.contains("Contact:")) return "Not Available";
 
-        new Thread(() -> {
-            try {
-                // 1. Prepare Smart URL
-                // We use 'generator=search' to find the closest match, not just exact title
-                String encodedName = URLEncoder.encode(query + " hospital", "UTF-8");
-                String urlString = "https://en.wikipedia.org/w/api.php?format=json&action=query&prop=extracts&exintro&explaintext&generator=search&gsrlimit=1&gsrsearch=" + encodedName;
+            String phone = description.split("Contact:")[1].split("\n")[0].trim();
 
-                URL url = new URL(urlString);
-                HttpURLConnection urlConnection = (HttpURLConnection) url.openConnection();
-                urlConnection.setRequestMethod("GET");
-                urlConnection.setConnectTimeout(5000);
+            // Clean unwanted characters
+            phone = phone.replaceAll("[^0-9+]", "");
 
-                // 2. Read Response
-                BufferedReader reader = new BufferedReader(new InputStreamReader(urlConnection.getInputStream()));
-                StringBuilder response = new StringBuilder();
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    response.append(line);
-                }
-                reader.close();
+            // Validate
+            if (phone.length() < 8) return "Not Available";
 
-                // 3. Parse JSON
-                JSONObject jsonResponse = new JSONObject(response.toString());
+            return phone;
 
-                String resultText = "No specific information found on Wikipedia for this hospital.";
-
-                if (jsonResponse.has("query")) {
-                    JSONObject queryObj = jsonResponse.getJSONObject("query");
-                    if (queryObj.has("pages")) {
-                        JSONObject pages = queryObj.getJSONObject("pages");
-                        Iterator<String> keys = pages.keys();
-                        if (keys.hasNext()) {
-                            String pageId = keys.next();
-                            JSONObject page = pages.getJSONObject(pageId);
-                            if (page.has("extract")) {
-                                resultText = page.getString("extract");
-
-                                // Clean up empty results
-                                if (resultText.trim().isEmpty()) {
-                                    resultText = "No detailed description available on Wikipedia.";
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // 4. Update UI
-                String finalResult = resultText;
-                runOnUiThread(() -> desc.setText(finalResult));
-
-            } catch (Exception e) {
-                e.printStackTrace();
-                Log.e("WikiError", "Error fetching data: " + e.getMessage());
-                runOnUiThread(() -> desc.setText("Could not fetch details. (Requires Internet)"));
-            }
-        }).start();
+        } catch (Exception e) {
+            return "Not Available";
+        }
     }
 }
-

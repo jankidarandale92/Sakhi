@@ -1,13 +1,13 @@
 package com.example.sakhi;
 
 import android.content.Context;
+import android.content.Intent;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
@@ -24,12 +24,11 @@ public class HospitalAdapter extends RecyclerView.Adapter<HospitalAdapter.ViewHo
         this.hospitalList = hospitalList;
     }
 
-    // ▼▼▼ THIS IS THE MISSING PART CAUSING YOUR ERRORS ▼▼▼
+    // ✅ FILTER METHOD
     public void setFilteredList(List<HospitalModel> filteredList) {
         this.hospitalList = filteredList;
         notifyDataSetChanged();
     }
-    // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
 
     @NonNull
     @Override
@@ -40,46 +39,52 @@ public class HospitalAdapter extends RecyclerView.Adapter<HospitalAdapter.ViewHo
 
     @Override
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
+
         HospitalModel hospital = hospitalList.get(position);
 
+        // ✅ BASIC DATA
         holder.txtName.setText(hospital.getName());
         holder.txtDistance.setText(hospital.getDistance());
 
-        if (hospital.isVerified()) {
-            holder.imgVerified.setVisibility(View.VISIBLE);
-        } else {
-            holder.imgVerified.setVisibility(View.GONE);
-        }
+        // ✅ VERIFIED BADGE
+        holder.imgVerified.setVisibility(hospital.isVerified() ? View.VISIBLE : View.GONE);
 
-        // --- NEW CLICK LISTENER ---
+        // ✅ CLICK → DETAILS PAGE
         holder.btnView.setOnClickListener(v -> {
-            // Create an Intent to open the Details Screen
-            android.content.Intent intent = new android.content.Intent(context, HospitalDetailsActivity.class);
 
-            // Pack the data to send
+            Intent intent = new Intent(context, HospitalDetailsActivity.class);
+
+            // 🔥 PASS EVERYTHING SAFELY
             intent.putExtra("NAME", hospital.getName());
             intent.putExtra("LOCATION", hospital.getDistance());
             intent.putExtra("DESC", hospital.getDescription());
             intent.putExtra("IMAGE", hospital.getImageResId());
             intent.putExtra("VERIFIED", hospital.isVerified());
 
-            // Start the new screen
+            // 🔥 NEW (VERY IMPORTANT)
+            intent.putExtra("LAT", hospital.getLatitude());
+            intent.putExtra("LON", hospital.getLongitude());
+            intent.putExtra("PHONE", hospital.getPhone());
+
             context.startActivity(intent);
         });
     }
 
     @Override
     public int getItemCount() {
-        return hospitalList.size();
+        return hospitalList != null ? hospitalList.size() : 0;
     }
 
-    public class ViewHolder extends RecyclerView.ViewHolder {
+    // ✅ VIEW HOLDER
+    public static class ViewHolder extends RecyclerView.ViewHolder {
+
         TextView txtName, txtDistance;
         ImageView imgVerified;
         Button btnView;
 
         public ViewHolder(@NonNull View itemView) {
             super(itemView);
+
             txtName = itemView.findViewById(R.id.txtHospitalName);
             txtDistance = itemView.findViewById(R.id.txtDistance);
             imgVerified = itemView.findViewById(R.id.icVerified);
