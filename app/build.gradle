@@ -2,9 +2,21 @@ plugins {
     id 'com.android.application'
 }
 
+// 1. Add this block here to read the local.properties file
+def props = new Properties()
+def propsFile = rootProject.file("local.properties")
+if (propsFile.exists()) {
+    props.load(new FileInputStream(propsFile))
+}
+
 android {
     namespace 'com.example.sakhi'
     compileSdk 34
+
+    // 2. Enable buildFeatures to allow the app to see BuildConfig
+    buildFeatures {
+        buildConfig = true
+    }
 
     defaultConfig {
         applicationId "com.example.sakhi"
@@ -14,6 +26,11 @@ android {
         versionName "1.0"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+
+        buildConfigField "String", "SUPABASE_URL", props.getProperty("SUPABASE_URL")
+        buildConfigField "String", "SUPABASE_KEY", props.getProperty("SUPABASE_KEY")
+        // ADD THIS LINE BELOW
+        buildConfigField "String", "OPENROUTER_KEY", props.getProperty("OPENROUTER_KEY")
     }
 
     buildTypes {
@@ -32,6 +49,7 @@ android {
 }
 
 dependencies {
+    // ... (keep your existing dependencies here)
     implementation 'androidx.appcompat:appcompat:1.7.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.2.1'
     implementation 'com.google.android.material:material:1.11.0'
