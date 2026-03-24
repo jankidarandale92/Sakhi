@@ -63,5 +63,7 @@
         <item name="elevation">6dp</item>
     </style>
 
-
+    <style name="RoundedImage">
+        <item name="cornerSize">8dp</item>
+    </style>
 </resources>
