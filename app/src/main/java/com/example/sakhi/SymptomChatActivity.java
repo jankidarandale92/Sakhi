@@ -44,14 +44,21 @@ public class SymptomChatActivity extends AppCompatActivity {
         tvTitle.setText("Thinking...");
 
         if (messages.isEmpty()) {
-            messages.add(new Message("system", "You are Sakhi, a women's health triage assistant. If you suspect a condition (PCOS, Anemia, Thyroid, etc), reply ONLY with [POSSIBLE: ConditionName]. Otherwise ask a short, empathetic follow-up question."));
+            // 🔥 BALANCED & CLEAN PROMPT
+            String systemPrompt = "You are Sakhi, a professional women's health triage assistant. " +
+                    "Your goal is to gather a holistic view of the user's health before identifying a condition. " +
+                    "RULES: " +
+                    "1. When a user mentions a symptom, ask exactly 2-3 broad follow-up questions to understand the overall context (e.g., location, duration, fever, or related discomfort). " +
+                    "2. Do not limit yourself to one possibility; consider digestion, infection, or lifestyle alongside hormonal health. " +
+                    "3. Once you have enough context, reply ONLY with [POSSIBLE: ConditionName]. " +
+                    "4. FORMATTING: Use plain text only. DO NOT use stars (*), bullets, or bold formatting. " +
+                    "5. LANGUAGE: Always respond in the SAME language the user is using (English, Hindi, or Marathi). " +
+                    "6. Be empathetic but keep your questions concise and easy to read.";
+
+            messages.add(new Message("system", systemPrompt));
         }
         messages.add(new Message("user", userMsg));
 
-        // --- UPDATED MODEL ID ---
-        // OpenRouter often prefers the full path. Try "google/gemini-flash-1.5"
-        // If 404 persists, try "google/gemini-flash-1.5-8b"
-        // UPDATED MODEL ID FOR 2026
         OpenRouterRequest request = new OpenRouterRequest("google/gemini-2.0-flash-001", messages);
 
         OpenRouterClient.getInterface().getChatCompletion("Bearer " + BuildConfig.OPENROUTER_KEY, request)
@@ -62,6 +69,10 @@ public class SymptomChatActivity extends AppCompatActivity {
 
                         if (response.isSuccessful() && response.body() != null && response.body().choices != null && !response.body().choices.isEmpty()) {
                             String reply = response.body().choices.get(0).message.content;
+
+                            // Remove any accidental markdown stars or bullets just in case
+                            reply = reply.replace("*", "").replace("- ", "").trim();
+
                             messages.add(new Message("assistant", reply));
 
                             if (reply.contains("[POSSIBLE:")) {
@@ -72,23 +83,21 @@ public class SymptomChatActivity extends AppCompatActivity {
                                     startActivity(i);
                                     finish();
                                 } catch (Exception e) {
-                                    tvAIQuestion.setText(reply); // Fallback to showing the text
+                                    tvAIQuestion.setText(reply);
                                 }
                             } else {
                                 tvTitle.setText("Sakhi");
                                 tvAIQuestion.setText(reply);
                             }
                         } else {
-                            // Detailed error logging
-                            Log.e("SakhiError", "Code: " + response.code() + " Message: " + response.message());
-                            tvAIQuestion.setText("AI Error: " + response.code() + ". Check Model ID or API Key.");
+                            Log.e("SakhiError", "Code: " + response.code());
+                            tvAIQuestion.setText("AI Error: Check connection.");
                         }
                     }
 
                     @Override
                     public void onFailure(Call<OpenRouterResponse> call, Throwable t) {
                         progressBar.setVisibility(View.GONE);
-                        Log.e("SakhiError", "Failure: " + t.getMessage());
                         tvAIQuestion.setText("Connection failed. Check your internet.");
                     }
                 });

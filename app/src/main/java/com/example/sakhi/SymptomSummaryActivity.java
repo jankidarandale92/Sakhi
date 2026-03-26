@@ -22,7 +22,6 @@ public class SymptomSummaryActivity extends AppCompatActivity {
         setContentView(R.layout.activity_symptom_summary);
 
         // 1. Get the suspected condition from Intent
-        // Mark as final to be used safely inside the OnClickListener lambda
         final String condition = getIntent().getStringExtra("CONDITION_NAME") != null
                 ? getIntent().getStringExtra("CONDITION_NAME")
                 : "General Checkup";
@@ -35,33 +34,32 @@ public class SymptomSummaryActivity extends AppCompatActivity {
 
         TextView tvMessage = findViewById(R.id.tvMessage);
         if (tvMessage != null) {
-            tvMessage.setText("Your symptoms suggest a possibility of " + condition + ".");
+            // 🔥 MULTILINGUAL FEEDBACK
+            if (isDevanagari(condition)) {
+                tvMessage.setText("तुमच्या लक्षणांवरून तुम्हाला " + condition + " असण्याची शक्यता आहे.");
+            } else {
+                tvMessage.setText("Your symptoms suggest a possibility of " + condition + ".");
+            }
         }
 
-        // 3. Handle the Severity Logic (Popup & Alarm trigger inside here)
+        // 3. Handle the Severity Logic
         handleEmergencyLogic(condition);
 
         // 4. "Find Nearby Care" Button Logic
         Button btnFindCare = findViewById(R.id.btnFindCare);
         btnFindCare.setOnClickListener(v -> {
-            String query = "Doctors for " + condition + " near me";
+            String query = isDevanagari(condition) ? "जवळचे डॉक्टर " + condition : "Doctors for " + condition + " near me";
             Uri gmmIntentUri = Uri.parse("geo:0,0?q=" + Uri.encode(query));
             Intent mapIntent = new Intent(Intent.ACTION_VIEW, gmmIntentUri);
             mapIntent.setPackage("com.google.android.apps.maps");
 
             try {
-                if (mapIntent.resolveActivity(getPackageManager()) != null) {
-                    startActivity(mapIntent);
-                } else {
-                    Uri webUri = Uri.parse("https://www.google.com/maps/search/" + Uri.encode(query));
-                    startActivity(new Intent(Intent.ACTION_VIEW, webUri));
-                }
+                startActivity(mapIntent);
             } catch (Exception e) {
-                Toast.makeText(this, "Could not open maps. Please check your browser.", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "Maps could not be opened.", Toast.LENGTH_SHORT).show();
             }
         });
 
-        // 5. Back Button Logic
         findViewById(R.id.btnBack).setOnClickListener(v -> onBackPressed());
     }
 
@@ -72,61 +70,63 @@ public class SymptomSummaryActivity extends AppCompatActivity {
         long firstReportedTimestamp = prefs.getLong(key, System.currentTimeMillis());
         long currentTime = System.currentTimeMillis();
 
-        // Testing math: 1 minute = 1 day
         long diffInMs = currentTime - firstReportedTimestamp;
-        long daysPassed = diffInMs / (1000 * 60);
-        // long daysPassed = diffInMs / (1000 * 60 * 60 * 24); // Real days
+        long daysPassed = diffInMs / (1000 * 60); // Testing: 1 min = 1 day
 
         TextView tvNote = findViewById(R.id.tvNote);
         if (tvNote != null) {
+            boolean isLocal = isDevanagari(condition);
+
             if (daysPassed >= 7) {
-                // --- RED ALERT ---
-                tvNote.setText("🚨 CRITICAL: Persistent for " + daysPassed + " days. Please seek urgent medical advice immediately.");
+                String text = isLocal ? "🚨 गंभीर: " + daysPassed + " दिवसांपासून त्रास होत आहे. कृपया त्वरित डॉक्टरांचा सल्ला घ्या."
+                        : "🚨 CRITICAL: Persistent for " + daysPassed + " days. Please seek urgent medical advice.";
+                tvNote.setText(text);
                 tvNote.setTextColor(Color.RED);
                 tvNote.setTypeface(null, Typeface.BOLD);
-
-                // Show the Emergency Popup and Alarm Sound
                 showEmergencyPopup(condition, daysPassed);
 
             } else if (daysPassed >= 3) {
-                // --- ORANGE WARNING ---
-                tvNote.setText("⚠️ WARNING: Symptom persistent for " + daysPassed + " days. Consider booking a doctor's appointment.");
-                tvNote.setTextColor(Color.parseColor("#E65100")); // Deep Orange
+                String text = isLocal ? "⚠️ चेतावणी: हा त्रास " + daysPassed + " दिवसांपासून आहे. डॉक्टरांची भेट घेण्याचा विचार करा."
+                        : "⚠️ WARNING: Symptom persistent for " + daysPassed + " days. Consider booking an appointment.";
+                tvNote.setText(text);
+                tvNote.setTextColor(Color.parseColor("#E65100"));
                 tvNote.setTypeface(null, Typeface.BOLD);
             } else {
-                // --- PINK NORMAL ---
-                tvNote.setText("🌸 Early attention can help prevent long-term complications.");
+                String text = isLocal ? "🌸 वेळेवर लक्ष दिल्यास पुढील त्रास टाळता येतो."
+                        : "🌸 Early attention can help prevent long-term complications.";
+                tvNote.setText(text);
                 tvNote.setTextColor(Color.parseColor("#D81B60"));
-                tvNote.setTypeface(null, Typeface.NORMAL);
             }
         }
     }
 
-    /**
-     * Plays a notification sound and displays a modal dialog for Critical alerts.
-     */
     private void showEmergencyPopup(String condition, long days) {
-        // 1. Play Alarm/Notification Sound
         try {
             Uri notification = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
             Ringtone r = RingtoneManager.getRingtone(getApplicationContext(), notification);
             r.play();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        } catch (Exception e) { e.printStackTrace(); }
 
-        // 2. Build and Show the Alert Dialog
+        boolean isLocal = isDevanagari(condition);
+        String title = isLocal ? "🚨 तातडीची आरोग्य सूचना" : "🚨 Urgent Health Alert";
+        String msg = isLocal ? "तुम्ही " + days + " दिवसांपासून " + condition + " संबंधित लक्षणे नोंदवली आहेत. डॉक्टरांची गरज असू शकते."
+                : "You have reported symptoms related to " + condition + " for over " + days + " days. Seek medical attention.";
+        String btnPos = isLocal ? "डॉक्टर शोधा" : "Find Doctor";
+        String btnNeg = isLocal ? "बंद करा" : "Dismiss";
+
         new AlertDialog.Builder(this)
-                .setTitle("🚨 Urgent Health Alert")
-                .setMessage("You have reported symptoms related to " + condition + " for over " + days + " days. This may require medical attention. Would you like to find a doctor now?")
-                .setCancelable(false) // Forces user to acknowledge
-                .setPositiveButton("Find Doctor", (dialog, which) -> {
-                    // Clicks the existing Maps button for the user
-                    findViewById(R.id.btnFindCare).performClick();
-                })
-                .setNegativeButton("Dismiss", (dialog, which) -> dialog.dismiss())
+                .setTitle(title)
+                .setMessage(msg)
+                .setCancelable(false)
+                .setPositiveButton(btnPos, (dialog, which) -> findViewById(R.id.btnFindCare).performClick())
+                .setNegativeButton(btnNeg, (dialog, which) -> dialog.dismiss())
                 .setIcon(android.R.drawable.ic_dialog_alert)
                 .show();
+    }
+
+    // 🔥 Helper to detect Devanagari (Hindi/Marathi) Script
+    private boolean isDevanagari(String text) {
+        return text.matches(".*[\\u0900-\\u097F].*");
     }
 
     @Override

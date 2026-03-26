@@ -44,7 +44,12 @@ public class SymptomSurveyActivity extends AppCompatActivity {
         conditionName = getIntent().getStringExtra("CONDITION_NAME");
         if (conditionName == null) conditionName = "Unknown Issue";
 
-        tvCondition.setText("Checking for: " + conditionName);
+        // 🔥 Multilingual Header Support
+        if (isDevanagari(conditionName)) {
+            tvCondition.setText("तपासत आहे: " + conditionName);
+        } else {
+            tvCondition.setText("Checking for: " + conditionName);
+        }
 
         // 2. Trigger AI Question Generation
         generateQuestions(conditionName);
@@ -64,7 +69,6 @@ public class SymptomSurveyActivity extends AppCompatActivity {
         if (!isTaskRoot()) {
             super.onBackPressed();
         } else {
-            // Fallback to Chat if there's no activity stack
             startActivity(new Intent(this, SymptomChatActivity.class));
             finish();
         }
@@ -72,17 +76,19 @@ public class SymptomSurveyActivity extends AppCompatActivity {
 
     private void generateQuestions(String condition) {
         progressBar.setVisibility(View.VISIBLE);
-        btnAnalyze.setVisibility(View.GONE); // Hide until questions are ready
+        btnAnalyze.setVisibility(View.GONE);
 
-        // Prepare the messages for the OpenRouter API
+        // 🔥 MULTILINGUAL GENERATION PROMPT
+        String prompt = "Generate exactly 3 simple Yes/No diagnostic questions to confirm if a patient has " + condition + ". " +
+                "IMPORTANT: You must detect the language of '" + condition + "' and generate the questions in that SAME language (English, Hindi, or Marathi). " +
+                "Return ONLY the questions separated by a pipe symbol (|). Example: Question 1|Question 2|Question 3";
+
         List<Message> messages = new ArrayList<>();
-        messages.add(new Message("user", "Generate exactly 3 simple Yes/No diagnostic questions to confirm if a patient has " + condition + ". Return ONLY the questions separated by a pipe symbol (|). Example: Question 1|Question 2|Question 3"));
+        messages.add(new Message("user", prompt));
 
-        // Create Request (Model name must match OpenRouter format)
-        // UPDATED MODEL ID FOR 2026
+        // Using Gemini 2.0 Flash
         OpenRouterRequest request = new OpenRouterRequest("google/gemini-2.0-flash-001", messages);
 
-        // API Call using Retrofit
         OpenRouterClient.getInterface().getChatCompletion("Bearer " + BuildConfig.OPENROUTER_KEY, request)
                 .enqueue(new Callback<OpenRouterResponse>() {
                     @Override
@@ -90,12 +96,11 @@ public class SymptomSurveyActivity extends AppCompatActivity {
                         if (response.isSuccessful() && response.body() != null && response.body().choices != null) {
                             String rawText = response.body().choices.get(0).message.content.trim();
 
-                            // Split questions by pipe character
                             final String[] questions = rawText.split("\\|");
 
                             runOnUiThread(() -> {
                                 progressBar.setVisibility(View.GONE);
-                                questionsContainer.removeAllViews(); // Clear existing views
+                                questionsContainer.removeAllViews();
                                 checkBoxes.clear();
 
                                 for (String q : questions) {
@@ -103,8 +108,10 @@ public class SymptomSurveyActivity extends AppCompatActivity {
                                         CheckBox cb = new CheckBox(SymptomSurveyActivity.this);
                                         cb.setText(q.trim());
                                         cb.setTextSize(16f);
-                                        cb.setPadding(0, 30, 0, 30); // Better spacing
+                                        cb.setPadding(0, 30, 0, 30);
                                         cb.setTextColor(Color.BLACK);
+                                        // Ensure local scripts have enough space
+                                        cb.setLineSpacing(1.2f, 1.2f);
 
                                         questionsContainer.addView(cb);
                                         checkBoxes.add(cb);
@@ -112,24 +119,18 @@ public class SymptomSurveyActivity extends AppCompatActivity {
                                 }
                                 if (!checkBoxes.isEmpty()) {
                                     btnAnalyze.setVisibility(View.VISIBLE);
-                                } else {
-                                    Toast.makeText(SymptomSurveyActivity.this, "AI returned invalid format. Try again.", Toast.LENGTH_SHORT).show();
+                                    // Update button text for better UX
+                                    if (isDevanagari(condition)) btnAnalyze.setText("तपासा");
                                 }
                             });
                         } else {
-                            runOnUiThread(() -> {
-                                progressBar.setVisibility(View.GONE);
-                                Toast.makeText(SymptomSurveyActivity.this, "Error: " + response.code(), Toast.LENGTH_SHORT).show();
-                            });
+                            runOnUiThread(() -> progressBar.setVisibility(View.GONE));
                         }
                     }
 
                     @Override
                     public void onFailure(Call<OpenRouterResponse> call, Throwable t) {
-                        runOnUiThread(() -> {
-                            progressBar.setVisibility(View.GONE);
-                            Toast.makeText(SymptomSurveyActivity.this, "Network Error: " + t.getMessage(), Toast.LENGTH_SHORT).show();
-                        });
+                        runOnUiThread(() -> progressBar.setVisibility(View.GONE));
                     }
                 });
     }
@@ -140,23 +141,23 @@ public class SymptomSurveyActivity extends AppCompatActivity {
             if (cb.isChecked()) yesCount++;
         }
 
-        // Logic: If user says 'Yes' to at least 2 questions, confirm the condition
-        String finalCondition = (yesCount >= 2) ? conditionName : "General Health Issue";
+        String finalCondition = (yesCount >= 2) ? conditionName : (isDevanagari(conditionName) ? "सामान्य आरोग्य समस्या" : "General Health Issue");
 
-        // --- PERSISTENCE LOGIC (The "Sakhi" Special) ---
-        // Store the date of first report to track 3-day/7-day severity
         SharedPreferences prefs = getSharedPreferences("SakhiHealthHistory", MODE_PRIVATE);
         String key = "first_report_" + finalCondition.toLowerCase().replace(" ", "_");
 
         if (!prefs.contains(key)) {
-            // Save current time as the "First Report" timestamp
             prefs.edit().putLong(key, System.currentTimeMillis()).apply();
         }
 
-        // Navigate to Summary screen
         Intent intent = new Intent(SymptomSurveyActivity.this, SymptomSummaryActivity.class);
         intent.putExtra("CONDITION_NAME", finalCondition);
         startActivity(intent);
         finish();
+    }
+
+    // 🔥 Helper to detect Devanagari Script (Hindi/Marathi)
+    private boolean isDevanagari(String text) {
+        return text.matches(".*[\\u0900-\\u097F].*");
     }
 }
