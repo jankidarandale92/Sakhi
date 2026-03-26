@@ -21,6 +21,9 @@ public class SymptomChatActivity extends AppCompatActivity {
     ProgressBar progressBar;
     List<Message> messages = new ArrayList<>();
 
+    // 🔥 Track the specific detected language
+    private String userLang = "English";
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -39,21 +42,25 @@ public class SymptomChatActivity extends AppCompatActivity {
         String userMsg = etMessage.getText().toString().trim();
         if (userMsg.isEmpty()) return;
 
+        // 🔥 Reset and detect language on the VERY first message of the session
+        if (messages.isEmpty()) {
+            userLang = detectSpecificLanguage(userMsg);
+        }
+
         etMessage.setText("");
         progressBar.setVisibility(View.VISIBLE);
         tvTitle.setText("Thinking...");
 
         if (messages.isEmpty()) {
-            // 🔥 BALANCED & CLEAN PROMPT
+            // 🔥 REINFORCED SYSTEM PROMPT: Forcing total adherence to the detected language
             String systemPrompt = "You are Sakhi, a professional women's health triage assistant. " +
-                    "Your goal is to gather a holistic view of the user's health before identifying a condition. " +
+                    "Gather a holistic view (2-3 questions) before identifying a condition. " +
                     "RULES: " +
-                    "1. When a user mentions a symptom, ask exactly 2-3 broad follow-up questions to understand the overall context (e.g., location, duration, fever, or related discomfort). " +
-                    "2. Do not limit yourself to one possibility; consider digestion, infection, or lifestyle alongside hormonal health. " +
-                    "3. Once you have enough context, reply ONLY with [POSSIBLE: ConditionName]. " +
-                    "4. FORMATTING: Use plain text only. DO NOT use stars (*), bullets, or bold formatting. " +
-                    "5. LANGUAGE: Always respond in the SAME language the user is using (English, Hindi, or Marathi). " +
-                    "6. Be empathetic but keep your questions concise and easy to read.";
+                    "1. When ready, reply ONLY with [POSSIBLE: ConditionName]. " +
+                    "2. FORMATTING: Use plain text only. NO stars (*), bullets, or bold. " +
+                    "3. LANGUAGE: You MUST respond strictly in " + userLang + ". " +
+                    "If the language is English, do NOT use any Hindi or Marathi words. " +
+                    "If Hindi, use Hindi grammar. If Marathi, use Marathi grammar.";
 
             messages.add(new Message("system", systemPrompt));
         }
@@ -67,10 +74,8 @@ public class SymptomChatActivity extends AppCompatActivity {
                     public void onResponse(Call<OpenRouterResponse> call, Response<OpenRouterResponse> response) {
                         progressBar.setVisibility(View.GONE);
 
-                        if (response.isSuccessful() && response.body() != null && response.body().choices != null && !response.body().choices.isEmpty()) {
+                        if (response.isSuccessful() && response.body() != null && !response.body().choices.isEmpty()) {
                             String reply = response.body().choices.get(0).message.content;
-
-                            // Remove any accidental markdown stars or bullets just in case
                             reply = reply.replace("*", "").replace("- ", "").trim();
 
                             messages.add(new Message("assistant", reply));
@@ -80,6 +85,10 @@ public class SymptomChatActivity extends AppCompatActivity {
                                     String condition = reply.substring(reply.indexOf(":") + 1, reply.indexOf("]")).trim();
                                     Intent i = new Intent(SymptomChatActivity.this, SymptomSurveyActivity.class);
                                     i.putExtra("CONDITION_NAME", condition);
+
+                                    // 🔥 PASS THE SPECIFIC DETECTED LANGUAGE (English, Hindi, or Marathi)
+                                    i.putExtra("USER_LANG", userLang);
+
                                     startActivity(i);
                                     finish();
                                 } catch (Exception e) {
@@ -101,6 +110,35 @@ public class SymptomChatActivity extends AppCompatActivity {
                         tvAIQuestion.setText("Connection failed. Check your internet.");
                     }
                 });
+    }
+
+    // 🔥 REFINED LANGUAGE DETECTION: Strictly separates English from Devanagari scripts
+    private String detectSpecificLanguage(String text) {
+        // Step 1: Check if there are ANY Devanagari characters.
+        // If not, it is 100% English.
+        if (!text.matches(".*[\\u0900-\\u097F].*")) {
+            return "English";
+        }
+
+        // Step 2: If Devanagari is found, distinguish between Marathi and Hindi
+        String lower = text.toLowerCase();
+
+        // Marathi-specific common keywords/markers
+        if (lower.contains("आहे") || lower.contains("होतंय") || lower.contains("नाही") ||
+                lower.contains("मुलगी") || lower.contains("काय") || lower.contains("हवंय") ||
+                lower.contains("दुखतंय") || lower.contains("सांगा")) {
+            return "Marathi";
+        }
+
+        // Hindi-specific common keywords/markers
+        if (lower.contains("है") || lower.contains("रहा") || lower.contains("रही") ||
+                lower.contains("हूँ") || lower.contains("लड़की") || lower.contains("क्या") ||
+                lower.contains("दर्द") || lower.contains("बताओ")) {
+            return "Hindi";
+        }
+
+        // Default fallback for Devanagari script (defaults to Hindi as it's more common)
+        return "Hindi";
     }
 
     @Override

@@ -1,21 +1,19 @@
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:orientation="vertical"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/white">
-
     <!-- Toolbar -->
     <androidx.appcompat.widget.Toolbar
         android:layout_width="match_parent"
         android:layout_height="?attr/actionBarSize"
         android:background="@drawable/nav_bg"
         android:paddingHorizontal="16dp">
-
         <RelativeLayout
             android:layout_width="match_parent"
             android:layout_height="match_parent">
-
             <ImageView
                 android:id="@+id/btnBack"
                 android:layout_width="24dp"
@@ -23,7 +21,6 @@
                 android:layout_centerVertical="true"
                 android:src="@drawable/arrow_back"
                 app:tint="#FFFFFF"/>
-
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -34,14 +31,12 @@
                 android:textStyle="bold"/>
         </RelativeLayout>
     </androidx.appcompat.widget.Toolbar>
-
     <!-- Content -->
     <LinearLayout
         android:orientation="vertical"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:padding="24dp">
-
         <!-- Last Period Date -->
         <com.google.android.material.textfield.TextInputLayout
             android:layout_width="match_parent"
@@ -55,7 +50,6 @@
             app:endIconDrawable="@drawable/ic_calender"
             app:endIconTint="@color/pink_dark"
             android:layout_marginBottom="16dp">
-
             <com.google.android.material.textfield.TextInputEditText
                 android:id="@+id/etLastPeriod"
                 android:layout_width="match_parent"
@@ -66,7 +60,6 @@
                 android:textCursorDrawable="@drawable/cursor_pink"
                 android:textSize="14sp"/>
         </com.google.android.material.textfield.TextInputLayout>
-
         <!-- Cycle Length -->
         <com.google.android.material.textfield.TextInputLayout
             android:layout_width="match_parent"
@@ -77,7 +70,6 @@
             app:boxStrokeWidthFocused="2dp"
             app:hintTextColor="@color/pink_dark"
             android:layout_marginBottom="16dp">
-
             <com.google.android.material.textfield.TextInputEditText
                 android:id="@+id/etCycleLength"
                 android:layout_width="match_parent"
@@ -87,7 +79,6 @@
                 android:textCursorDrawable="@drawable/cursor_pink"
                 android:textSize="14sp"/>
         </com.google.android.material.textfield.TextInputLayout>
-
         <!-- Period Length -->
         <com.google.android.material.textfield.TextInputLayout
             android:layout_width="match_parent"
@@ -98,7 +89,6 @@
             app:boxStrokeWidthFocused="2dp"
             app:hintTextColor="@color/pink_dark"
             android:layout_marginBottom="28dp">
-
             <com.google.android.material.textfield.TextInputEditText
                 android:id="@+id/etPeriodLength"
                 android:layout_width="match_parent"
@@ -107,10 +97,8 @@
                 android:textColor="#000000"
                 android:textCursorDrawable="@drawable/cursor_pink"
                 android:textSize="14sp"/>
-    </com.google.android.material.textfield.TextInputLayout>
-
-
-    <!-- Save Button -->
+        </com.google.android.material.textfield.TextInputLayout>
+        <!-- Save Button -->
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnSave"
             android:layout_width="match_parent"
@@ -122,5 +110,4 @@
             android:background="@drawable/btn_gradient_signup"
             app:backgroundTint="@null"/>
     </LinearLayout>
-
 </LinearLayout>
