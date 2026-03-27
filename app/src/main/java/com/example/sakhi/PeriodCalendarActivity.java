@@ -1,18 +1,25 @@
 package com.example.sakhi;
 
+import android.app.AlarmManager;
+import android.app.PendingIntent;
+import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
+import android.os.Build;
 import android.os.Bundle;
 import android.widget.ImageView;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 
+import java.lang.reflect.Type;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
@@ -29,15 +36,15 @@ public class PeriodCalendarActivity extends AppCompatActivity {
     private static final String SUPABASE_KEY =
             "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNic3Bxbm5tdWxsZXpscGJkemhzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg4MTc4NDYsImV4cCI6MjA4NDM5Mzg0Nn0.H9p0LoBRWEgjKBRSfKg1DdwnCN7qV2dQCo2gVEL7DiU";
 
-    RecyclerView rv;
-    TextView tvNext, tvMonth;
-    ImageView btnPrev, btnNext;
+    private RecyclerView rv;
+    private TextView tvNext, tvMonth;
+    private ImageView btnPrev, btnNext;
 
-    Calendar currentMonth = Calendar.getInstance();
+    private Calendar currentMonth = Calendar.getInstance();
 
-    Date lastPeriod;
-    int cycleLength;
-    int periodLength;
+    private Date lastPeriod;
+    private int cycleLength;
+    private int periodLength;
 
     @Override
     protected void onCreate(Bundle b) {
@@ -95,6 +102,12 @@ public class PeriodCalendarActivity extends AppCompatActivity {
                                 lastPeriod = sdf.parse(data.get("last_period_date").getAsString());
                                 cycleLength = data.get("cycle_length").getAsInt();
                                 periodLength = data.get("period_length").getAsInt();
+
+                                Date nextDate = CycleCalculator.getNextPeriod(lastPeriod, cycleLength);
+
+                                // 🔥 NEW: Schedule notifications and sync with Reminder list
+                                schedulePeriodNotifications(nextDate);
+
                                 renderCalendar();
                             } catch (Exception e) { e.printStackTrace(); }
                         } else {
@@ -109,6 +122,90 @@ public class PeriodCalendarActivity extends AppCompatActivity {
                 });
     }
 
+    private void schedulePeriodNotifications(Date nextPeriodDate) {
+        if (nextPeriodDate == null) return;
+
+        SimpleDateFormat sdf = new SimpleDateFormat("dd MMM", Locale.US);
+        String dateStr = sdf.format(nextPeriodDate);
+
+        String title = "Menstrual Cycle Alert";
+        String message = "Your period is expected tomorrow (" + dateStr + "). Stay prepared! 🌸";
+
+        // 1. Save this to the shared reminder list (SharedPreferences) at 1:40 PM
+        saveToReminderList(title, dateStr);
+
+        // 2. Schedule the actual alarm for 1:40 PM (13:40) one day before the period
+        scheduleSingleAlarm(nextPeriodDate, -1, title, message, 999);
+    }
+
+    private void saveToReminderList(String title, String dateStr) {
+        SharedPreferences prefs = getSharedPreferences("SakhiData", MODE_PRIVATE);
+        Gson gson = new Gson();
+        String json = prefs.getString("reminders", null);
+        List<RemainderModel> list;
+
+        if (json == null) {
+            list = new ArrayList<>();
+        } else {
+            Type type = new TypeToken<ArrayList<RemainderModel>>() {}.getType();
+            list = gson.fromJson(json, type);
+        }
+
+        // Check if item 999 (Fixed ID for Period) exists; if so, update it
+        boolean updated = false;
+        for (RemainderModel m : list) {
+            if (m.id == 999) {
+                m.title = title;
+                m.time = "01:40 PM";
+                m.repeat = "Once on " + dateStr;
+                m.isActive = true;
+                updated = true;
+                break;
+            }
+        }
+
+        if (!updated) {
+            // Add as a new item with ID 999 if it doesn't exist
+            list.add(new RemainderModel(999, title, "01:40 PM", "Once on " + dateStr, true));
+        }
+
+        prefs.edit().putString("reminders", gson.toJson(list)).apply();
+    }
+
+    private void scheduleSingleAlarm(Date baseDate, int daysOffset, String title, String message, int requestCode) {
+        Calendar calendar = Calendar.getInstance();
+        calendar.setTime(baseDate);
+        calendar.add(Calendar.DAY_OF_YEAR, daysOffset);
+
+        // 🔥 Set for 1:40 PM (13:40 in 24-hour format)
+        calendar.set(Calendar.HOUR_OF_DAY, 13);
+        calendar.set(Calendar.MINUTE, 40);
+        calendar.set(Calendar.SECOND, 0);
+
+        if (calendar.getTimeInMillis() < System.currentTimeMillis()) return;
+
+        Intent intent = new Intent(this, RemainderReceiver.class);
+        intent.putExtra("type", "PERIOD_ALERT");
+        intent.putExtra("title", title);
+        intent.putExtra("message", message);
+        intent.putExtra("id", requestCode);
+
+        PendingIntent pendingIntent = PendingIntent.getBroadcast(
+                this, requestCode, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+
+        AlarmManager alarmManager = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
+        if (alarmManager != null) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,
+                        calendar.getTimeInMillis(), pendingIntent);
+            } else {
+                alarmManager.setExact(AlarmManager.RTC_WAKEUP,
+                        calendar.getTimeInMillis(), pendingIntent);
+            }
+        }
+    }
+
     private void renderCalendar() {
         List<CalendarDay> cells = new ArrayList<>();
         tvMonth.setText(new SimpleDateFormat("MMMM yyyy", Locale.US).format(currentMonth.getTime()));
@@ -119,7 +216,6 @@ public class PeriodCalendarActivity extends AppCompatActivity {
         int offset = cal.get(Calendar.DAY_OF_WEEK) - 1;
         for (int i = 0; i < offset; i++) cells.add(new CalendarDay());
 
-        // --- PHASE LOGIC ---
         Date ovulationDay = null;
         Date nextPeriodStart = null;
         List<Date> periodDays = new ArrayList<>();
@@ -147,7 +243,6 @@ public class PeriodCalendarActivity extends AppCompatActivity {
                 d.isOvulation = same(cellDate, ovulationDay);
                 d.isFertile = contains(fertileWindow, cellDate);
 
-                // 🔥 Luteal Phase Logic: After Ovulation AND before Next Period
                 if (cellDate.after(ovulationDay) && cellDate.before(nextPeriodStart) && !d.isOvulation) {
                     d.isLuteal = true;
                 }
@@ -160,9 +255,12 @@ public class PeriodCalendarActivity extends AppCompatActivity {
 
     private boolean same(Date a, Date b) {
         if (a == null || b == null) return false;
-        Calendar c1 = Calendar.getInstance(); Calendar c2 = Calendar.getInstance();
-        c1.setTime(a); c2.setTime(b);
-        return c1.get(Calendar.YEAR) == c2.get(Calendar.YEAR) && c1.get(Calendar.DAY_OF_YEAR) == c2.get(Calendar.DAY_OF_YEAR);
+        Calendar c1 = Calendar.getInstance();
+        Calendar c2 = Calendar.getInstance();
+        c1.setTime(a);
+        c2.setTime(b);
+        return c1.get(Calendar.YEAR) == c2.get(Calendar.YEAR) &&
+                c1.get(Calendar.DAY_OF_YEAR) == c2.get(Calendar.DAY_OF_YEAR);
     }
 
     private boolean contains(List<Date> list, Date d) {

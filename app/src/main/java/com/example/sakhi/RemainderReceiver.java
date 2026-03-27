@@ -20,11 +20,19 @@ public class RemainderReceiver extends BroadcastReceiver {
 
     @Override
     public void onReceive(Context context, Intent intent) {
-        // 1. Retrieve the data passed from ReminderHelper
+        // 1. Retrieve the data passed from ReminderHelper or PeriodCalendarActivity
         String title = intent.getStringExtra("title");
         String message = intent.getStringExtra("message");
-        // We use the unique ID to ensure multiple notifications can show at once
+        String type = intent.getStringExtra("type");
+
+        // Use the unique ID passed or generate a fallback
         int notificationId = intent.getIntExtra("id", (int) System.currentTimeMillis());
+
+        // 🔥 LOGIC: Customize Title/Message for Period Alerts
+        if ("PERIOD_ALERT".equals(type)) {
+            title = "Sakhi: Period Alert 🌸";
+            // message is already passed as "Your period is expected in X days..."
+        }
 
         // 2. Setup the Notification Channel (For Android 8.0+)
         String channelId = "sakhi_reminders";
@@ -34,7 +42,7 @@ public class RemainderReceiver extends BroadcastReceiver {
                     "Sakhi Wellness Reminders",
                     NotificationManager.IMPORTANCE_HIGH
             );
-            channel.setDescription("Notifications for medicine, water, and health checks");
+            channel.setDescription("Notifications for medicine, water, and period tracking");
             channel.enableVibration(true);
             channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
 
@@ -47,15 +55,15 @@ public class RemainderReceiver extends BroadcastReceiver {
         // 3. Define the sound to play
         Uri alarmSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
 
-        // 4. Build the Notification with "Ringing" properties
+        // 4. Build the Notification
         NotificationCompat.Builder builder = new NotificationCompat.Builder(context, channelId)
-                .setSmallIcon(R.drawable.ic_notifications) // Ensure this is a flat, white icon
+                .setSmallIcon(R.drawable.ic_notifications) // Ensure this icon exists in your drawable
                 .setContentTitle(title != null ? title : "Sakhi Reminder")
                 .setContentText(message != null ? message : "It's time for your health task! 🌸")
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setCategory(NotificationCompat.CATEGORY_REMINDER)
-                .setSound(alarmSound) // 🔥 Makes it ring
-                .setDefaults(NotificationCompat.DEFAULT_ALL) // 🔥 Enables default vibration/lights
+                .setSound(alarmSound)
+                .setDefaults(NotificationCompat.DEFAULT_ALL)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                 .setAutoCancel(true);
 
@@ -65,7 +73,6 @@ public class RemainderReceiver extends BroadcastReceiver {
         // Check for POST_NOTIFICATIONS permission (Required for Android 13+)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ActivityCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                // Permission not granted; usually handled in the Activity, so we exit here
                 return;
             }
         }
