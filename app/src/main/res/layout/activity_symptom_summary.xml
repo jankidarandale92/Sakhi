@@ -132,6 +132,21 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"/>
 
+    <TextView
+        android:id="@+id/instruction"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="60dp"
+        android:padding="16dp"
+        android:textStyle="bold"
+        android:text="For any homely recommendations visit the chatbot "
+        android:textAlignment="center"
+        android:textColor="#006703"
+        android:textSize="13sp"
+        app:layout_constraintTop_toBottomOf="@id/cardCondition"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"/>
+
     <Button
         android:id="@+id/btnFindCare"
         android:layout_width="match_parent"
