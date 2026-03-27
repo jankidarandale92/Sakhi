@@ -1,5 +1,6 @@
 package com.example.sakhi;
 
+import android.graphics.Color;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -41,21 +42,25 @@ public class CalendarAdapter extends RecyclerView.Adapter<CalendarAdapter.VH> {
         // 2. Set the Date Text
         h.tv.setText(df.format(d.date));
 
-        // 3. Apply Specific Backgrounds (Circles)
+        // 3. Apply Specific Backgrounds based on Biological Phases
         if (d.isPeriod) {
-            h.tv.setBackgroundResource(R.drawable.bg_day_period);
-            h.tv.setTextColor(0xFFFFFFFF); // White text for better contrast
+            h.tv.setBackgroundResource(R.drawable.bg_day_period); // Red/Deep Pink
+            h.tv.setTextColor(Color.WHITE);
         } else if (d.isOvulation) {
-            h.tv.setBackgroundResource(R.drawable.bg_day_ovulation);
-            h.tv.setTextColor(0xFFFFFFFF);
+            h.tv.setBackgroundResource(R.drawable.bg_day_ovulation); // Purple/Dark Pink
+            h.tv.setTextColor(Color.WHITE);
         } else if (d.isFertile) {
-            h.tv.setBackgroundResource(R.drawable.bg_day_fertile);
+            h.tv.setBackgroundResource(R.drawable.bg_day_fertile); // Light Pink
+            h.tv.setTextColor(0xFF222222);
+        } else if (d.isLuteal) {
+            // 🔥 NEW: Yellow Background for Luteal (Preparation) Phase
+            h.tv.setBackgroundResource(R.drawable.bg_day_luteal);
             h.tv.setTextColor(0xFF222222);
         } else if (d.isToday) {
-            h.tv.setBackgroundResource(R.drawable.bg_day_today);
-            h.tv.setTextColor(0xFFD81B60); // Pink text for today
+            h.tv.setBackgroundResource(R.drawable.bg_day_today); // Bordered circle
+            h.tv.setTextColor(0xFFD81B60);
         } else {
-            // Default Circle
+            // Default Grey/Normal Circle
             h.tv.setBackgroundResource(R.drawable.bg_day_normal);
             h.tv.setTextColor(0xFF222222);
         }

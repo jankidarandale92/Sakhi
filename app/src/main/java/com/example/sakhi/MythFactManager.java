@@ -2,86 +2,87 @@ package com.example.sakhi;
 
 import android.content.Context;
 import android.content.SharedPreferences;
-
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Calendar;
+import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 
 public class MythFactManager {
 
     private static final String PREF = "myth_fact_prefs";
-    private static final String KEY_INDEX = "today_index";
-    private static final String KEY_DAY = "saved_day";
-    private static final String KEY_DONE = "done";
+    // 🔥 Dynamic key prefix to separate users
+    private static final String KEY_PREFIX_DONE = "done_date_";
 
     public static List<MythFactQuestion> getQuestions() {
-
         List<MythFactQuestion> list = new ArrayList<>();
-
         list.add(new MythFactQuestion(
                 "Periods should always be painful.",
                 false,
-                "Fact: Severe pain is not normal and may need medical attention."
+                "Fact: Severe, debilitating pain is not normal and may be a sign of conditions like endometriosis."
         ));
-
         list.add(new MythFactQuestion(
-                "You can exercise during periods.",
-                true,
-                "Fact: Light exercise can reduce cramps and improve mood."
-        ));
-
-        list.add(new MythFactQuestion(
-                "Irregular cycles are always unhealthy.",
+                "Exercise during your period is harmful.",
                 false,
-                "Fact: Stress, diet, and hormones can affect cycles."
+                "Fact: Light exercise releases endorphins which can actually help reduce cramps and improve mood."
         ));
-
         list.add(new MythFactQuestion(
-                "Periods cleanse the body of toxins.",
-                false,
-                "Fact: The liver and kidneys handle detoxification."
-        ));
-
-        list.add(new MythFactQuestion(
-                "Ovulation pain can happen.",
+                "Irregular cycles are common in the first few years of menstruation.",
                 true,
-                "Fact: Some women feel mild ovulation pain."
+                "Fact: It often takes a few years for the body's hormonal system to establish a regular rhythm."
         ));
-
+        list.add(new MythFactQuestion(
+                "A woman cannot get pregnant during her period.",
+                false,
+                "Fact: While unlikely, it is possible, especially for women with very short or irregular cycles."
+        ));
+        list.add(new MythFactQuestion(
+                "Stress can cause your period to be late or skipped.",
+                true,
+                "Fact: High stress affects the hypothalamus, which controls the hormones responsible for your period."
+        ));
         return list;
     }
 
-    public static MythFactQuestion getTodayQuestion(Context context) {
-
-        SharedPreferences sp =
-                context.getSharedPreferences(PREF, Context.MODE_PRIVATE);
-
-        int today = Calendar.getInstance().get(Calendar.DAY_OF_YEAR);
-        int savedDay = sp.getInt(KEY_DAY, -1);
-
+    /**
+     * Selects a question based on the day of the year so everyone sees the same one daily.
+     */
+    public static MythFactQuestion getTodayQuestion() {
         List<MythFactQuestion> list = getQuestions();
-
-        if (today != savedDay) {
-            int index = today % list.size();
-            sp.edit()
-                    .putInt(KEY_INDEX, index)
-                    .putInt(KEY_DAY, today)
-                    .putBoolean(KEY_DONE, false)
-                    .apply();
-        }
-
-        return list.get(sp.getInt(KEY_INDEX, 0));
+        int dayOfYear = java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_YEAR);
+        int index = dayOfYear % list.size();
+        return list.get(index);
     }
 
+    /**
+     * Checks if the SPECIFIC user has completed the myth/fact for TODAY.
+     */
     public static boolean isCompleted(Context context) {
-        return context.getSharedPreferences(PREF, Context.MODE_PRIVATE)
-                .getBoolean(KEY_DONE, false);
+        String userId = SessionManager.getUserId(context);
+        if (userId == null) return false;
+
+        SharedPreferences sp = context.getSharedPreferences(PREF, Context.MODE_PRIVATE);
+        String today = getTodayString();
+
+        // Key format example: done_date_user123
+        String lastDate = sp.getString(KEY_PREFIX_DONE + userId, "");
+        return today.equals(lastDate);
     }
 
+    /**
+     * Marks the task as done for the current user and current date.
+     */
     public static void markCompleted(Context context) {
-        context.getSharedPreferences(PREF, Context.MODE_PRIVATE)
-                .edit()
-                .putBoolean(KEY_DONE, true)
+        String userId = SessionManager.getUserId(context);
+        if (userId == null) return;
+
+        SharedPreferences sp = context.getSharedPreferences(PREF, Context.MODE_PRIVATE);
+        sp.edit()
+                .putString(KEY_PREFIX_DONE + userId, getTodayString())
                 .apply();
+    }
+
+    private static String getTodayString() {
+        return new SimpleDateFormat("yyyy-MM-dd", Locale.US).format(new Date());
     }
 }

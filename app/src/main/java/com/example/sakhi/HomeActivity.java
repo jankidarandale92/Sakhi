@@ -3,6 +3,7 @@ package com.example.sakhi;
 import android.content.Intent;
 import android.graphics.Color;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.LinearLayout;
@@ -30,7 +31,6 @@ public class HomeActivity extends AppCompatActivity {
     private ShapeableImageView imgProfile;
     private TextView tvGreeting, tvWelcome;
 
-    // Article specific UI
     private RecyclerView rvPopular;
     private TextView tvSeeAll;
     private SwipeRefreshLayout swipeRefreshHome;
@@ -45,11 +45,7 @@ public class HomeActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_home);
 
-        // 1. Initial Logic & Navigation
-        updateDailyChallengeCard();
-        BottomNavHelper.setupBottomNav(this, R.id.navHome);
-
-        // 2. UI Initialization
+        // UI Initialization
         imgProfile = findViewById(R.id.imgProfile);
         tvGreeting = findViewById(R.id.tvGreeting);
         tvWelcome = findViewById(R.id.tvWelcome);
@@ -59,40 +55,27 @@ public class HomeActivity extends AppCompatActivity {
         noInternetLayout = findViewById(R.id.noInternetLayout);
         btnRetry = findViewById(R.id.btnRetry);
 
-        // 3. Setup Listeners
-        if (imgProfile != null) {
-            imgProfile.setOnClickListener(v -> showProfileMenu());
-        }
+        // Navigation and Data Update
+        updateDailyChallengeCard();
+        BottomNavHelper.setupBottomNav(this, R.id.navHome);
 
-        if (btnRetry != null) {
-            btnRetry.setOnClickListener(v -> fetchArticles());
-        }
+        // Setup Listeners
+        if (imgProfile != null) imgProfile.setOnClickListener(v -> showProfileMenu());
+        if (btnRetry != null) btnRetry.setOnClickListener(v -> fetchArticles());
+        if (tvSeeAll != null) tvSeeAll.setOnClickListener(v -> startActivity(new Intent(HomeActivity.this, AllArticlesActivity.class)));
 
-        if (tvSeeAll != null) {
-            tvSeeAll.setOnClickListener(v ->
-                    startActivity(new Intent(HomeActivity.this, AllArticlesActivity.class))
-            );
-        }
-
-        // 4. Feature Buttons (MythFact, Symptom Tracker)
         setupFeatureButtons();
 
-        // 5. Article RecyclerView Config
         if (rvPopular != null) {
             rvPopular.setLayoutManager(new LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false));
             rvPopular.setHasFixedSize(true);
         }
 
-        // 6. SwipeRefresh Config
         if (swipeRefreshHome != null) {
-            swipeRefreshHome.setColorSchemeColors(
-                    Color.parseColor("#E91E63"),
-                    Color.parseColor("#9C27B0")
-            );
+            swipeRefreshHome.setColorSchemeColors(Color.parseColor("#E91E63"), Color.parseColor("#9C27B0"));
             swipeRefreshHome.setOnRefreshListener(this::fetchArticles);
         }
 
-        // 7. Initial Data Fetching
         loadUserName();
         fetchArticles();
     }
@@ -101,69 +84,49 @@ public class HomeActivity extends AppCompatActivity {
     protected void onResume() {
         super.onResume();
         updateDailyChallengeCard();
-        loadProfileImage(); // Restored your profile image loading logic
+        loadProfileImage();
     }
 
     private void setupFeatureButtons() {
-        // MythFact logic
         findViewById(R.id.btnPlayMythFact).setOnClickListener(v -> {
+            // 🔥 FIXED: User-specific completion check
             if (MythFactManager.isCompleted(this)) {
-                Toast.makeText(this, "You already played today 🌸", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "You've learned your wellness fact for today! 🌸", Toast.LENGTH_SHORT).show();
             } else {
                 showMythFactGame();
             }
         });
 
-        // Symptom Tracker logic
         View included = findViewById(R.id.trackSymptomsInclude);
         if (included != null) {
             View btnTrack = included.findViewById(R.id.btnTrack);
             if (btnTrack != null) {
-                btnTrack.setOnClickListener(v ->
-                        startActivity(new Intent(this, SymptomChatActivity.class))
-                );
+                btnTrack.setOnClickListener(v -> startActivity(new Intent(this, SymptomChatActivity.class)));
             }
         }
     }
 
     private void fetchArticles() {
-        if (swipeRefreshHome != null && !swipeRefreshHome.isRefreshing()) {
-            swipeRefreshHome.setRefreshing(true);
-        }
+        if (swipeRefreshHome != null && !swipeRefreshHome.isRefreshing()) swipeRefreshHome.setRefreshing(true);
 
         String strictQuery = "\"women health\" AND (PCOS OR PCOD OR thyroid OR menstruation OR stress OR sleep OR diet)";
 
-        // Note: Ensure your RetrofitClient has a getService() method returning your NewsApi interface
         RetrofitClient.getService().getArticles(strictQuery, "en", "publishedAt", NEWS_API_KEY)
                 .enqueue(new Callback<NewsResponse>() {
                     @Override
                     public void onResponse(Call<NewsResponse> call, Response<NewsResponse> response) {
                         if (swipeRefreshHome != null) swipeRefreshHome.setRefreshing(false);
-
                         if (response.isSuccessful() && response.body() != null) {
                             List<Article> articleList = response.body().getArticles();
-
                             if (articleList != null && !articleList.isEmpty()) {
                                 if (noInternetLayout != null) noInternetLayout.setVisibility(View.GONE);
                                 if (rvPopular != null) rvPopular.setVisibility(View.VISIBLE);
-
                                 int limit = Math.min(articleList.size(), 5);
-                                List<Article> top5Articles = articleList.subList(0, limit);
-
-                                ArticleAdapter adapter = new ArticleAdapter(
-                                        HomeActivity.this,
-                                        top5Articles,
-                                        R.layout.item_article
-                                );
+                                ArticleAdapter adapter = new ArticleAdapter(HomeActivity.this, articleList.subList(0, limit), R.layout.item_article);
                                 rvPopular.setAdapter(adapter);
-                            } else {
-                                showErrorLayout();
-                            }
-                        } else {
-                            showErrorLayout();
-                        }
+                            } else { showErrorLayout(); }
+                        } else { showErrorLayout(); }
                     }
-
                     @Override
                     public void onFailure(Call<NewsResponse> call, Throwable t) {
                         if (swipeRefreshHome != null) swipeRefreshHome.setRefreshing(false);
@@ -191,7 +154,9 @@ public class HomeActivity extends AppCompatActivity {
     }
 
     private void showMythFactGame() {
-        MythFactQuestion q = MythFactManager.getTodayQuestion(this);
+        // 🔥 FIXED: No longer passing 'this' as it's a static daily rotation
+        MythFactQuestion q = MythFactManager.getTodayQuestion();
+
         View view = getLayoutInflater().inflate(R.layout.bottomsheet_myth_fact, null);
         com.google.android.material.bottomsheet.BottomSheetDialog dialog = new com.google.android.material.bottomsheet.BottomSheetDialog(this);
         dialog.setContentView(view);
@@ -202,12 +167,23 @@ public class HomeActivity extends AppCompatActivity {
 
         View.OnClickListener listener = v -> {
             boolean userAnswer = (v.getId() == R.id.btnFact);
-            tvRes.setText(userAnswer == q.isFact ? "Correct!\n" + q.explanation + "\n\n+10 points 🌸" : "Oops!\n" + q.explanation);
+
+            if (userAnswer == q.isFact) {
+                tvRes.setText("Correct! 🎉\n" + q.explanation + "\n\n+10 points 🌸");
+                tvRes.setTextColor(Color.parseColor("#4CAF50")); // Green
+            } else {
+                tvRes.setText("Not quite!\n" + q.explanation + "\n\nGood try! ✨");
+                tvRes.setTextColor(Color.parseColor("#F44336")); // Red
+            }
+
             tvRes.setVisibility(View.VISIBLE);
             view.findViewById(R.id.btnMyth).setEnabled(false);
             view.findViewById(R.id.btnFact).setEnabled(false);
+
+            // 🔥 FIXED: Marks completed for this user specifically
             MythFactManager.markCompleted(this);
         };
+
         view.findViewById(R.id.btnMyth).setOnClickListener(listener);
         view.findViewById(R.id.btnFact).setOnClickListener(listener);
         dialog.show();
@@ -225,14 +201,8 @@ public class HomeActivity extends AppCompatActivity {
                 if (response.isSuccessful() && response.body() != null && response.body().size() > 0) {
                     JsonObject profile = response.body().get(0).getAsJsonObject();
                     String imageUrl = profile.has("image_url") && !profile.get("image_url").isJsonNull() ? profile.get("image_url").getAsString() : "Not set";
-
                     if (!imageUrl.equals("Not set")) {
-                        Glide.with(HomeActivity.this)
-                                .load(imageUrl + "?t=" + System.currentTimeMillis())
-                                .placeholder(R.drawable.profile_image)
-                                .skipMemoryCache(true)
-                                .diskCacheStrategy(com.bumptech.glide.load.engine.DiskCacheStrategy.NONE)
-                                .into(imgProfile);
+                        Glide.with(HomeActivity.this).load(imageUrl + "?t=" + System.currentTimeMillis()).placeholder(R.drawable.profile_image).skipMemoryCache(true).diskCacheStrategy(com.bumptech.glide.load.engine.DiskCacheStrategy.NONE).into(imgProfile);
                     }
                 }
             }
@@ -252,10 +222,7 @@ public class HomeActivity extends AppCompatActivity {
             public void onResponse(retrofit2.Call<com.google.gson.JsonArray> call, retrofit2.Response<com.google.gson.JsonArray> response) {
                 if (response.isSuccessful() && response.body() != null && response.body().size() > 0) {
                     JsonObject profile = response.body().get(0).getAsJsonObject();
-                    String fullName = profile.has("full_name") && !profile.get("full_name").isJsonNull()
-                            ? profile.get("full_name").getAsString()
-                            : profile.get("username").getAsString();
-
+                    String fullName = profile.has("full_name") && !profile.get("full_name").isJsonNull() ? profile.get("full_name").getAsString() : profile.get("username").getAsString();
                     tvGreeting.setText("Hi, " + fullName);
                     tvWelcome.setText("Welcome, " + fullName + " 👋 Here are some health tasks for you!");
                 }
@@ -269,11 +236,13 @@ public class HomeActivity extends AppCompatActivity {
         Button btnStart = findViewById(R.id.btnStartChallenge);
         if (btnStart == null) return;
 
-        // We get the parent card view to find the status text
         View cardParent = (View) btnStart.getParent();
         TextView tvStatus = cardParent.findViewById(R.id.tvChallengeStatus);
 
-        if (ChallengeManager.isTodayCompleted(this)) {
+        String userId = SessionManager.getUserId(this);
+        String today = ChallengeManager.getTodayString();
+
+        if (ChallengeManager.isCompleted(this, today, userId)) {
             btnStart.setText("Completed ✓");
             btnStart.setEnabled(false);
             btnStart.setAlpha(0.6f);

@@ -2,7 +2,6 @@ package com.example.sakhi;
 
 import android.content.Context;
 import android.content.SharedPreferences;
-
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
@@ -10,41 +9,49 @@ import java.util.Locale;
 public class ChallengeManager {
 
     private static final String PREFS = "daily_challenge_prefs";
-    private static final String KEY_LAST_DATE = "last_completed_date";
-    private static final String KEY_POINTS = "total_points";
 
-    public static boolean isTodayCompleted(Context context) {
-        SharedPreferences sp =
-                context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+    // 🔥 Keys are now dynamic to include User ID
+    private static final String KEY_PREFIX_DATE = "last_date_";
+    private static final String KEY_PREFIX_POINTS = "points_";
 
-        String savedDate = sp.getString(KEY_LAST_DATE, "");
-        String today = getToday();
+    /**
+     * Checks if the specific user has completed the challenge today.
+     */
+    public static boolean isCompleted(Context context, String date, String userId) {
+        if (userId == null) return false;
+        SharedPreferences sp = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
 
-        return today.equals(savedDate);
+        // Check for a unique key: e.g., "last_date_user123"
+        String savedDate = sp.getString(KEY_PREFIX_DATE + userId, "");
+        return date.equals(savedDate);
     }
 
-    public static void completeToday(Context context) {
-        SharedPreferences sp =
-                context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+    /**
+     * Marks the challenge as done for the specific user and adds points.
+     */
+    public static void markAsDone(Context context, String date, String userId) {
+        if (userId == null) return;
+        SharedPreferences sp = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
 
-        int points = sp.getInt(KEY_POINTS, 0);
+        int currentPoints = sp.getInt(KEY_PREFIX_POINTS + userId, 0);
 
         sp.edit()
-                .putString(KEY_LAST_DATE, getToday())
-                .putInt(KEY_POINTS, points + 10)
+                .putString(KEY_PREFIX_DATE + userId, date)
+                .putInt(KEY_PREFIX_POINTS + userId, currentPoints + 10)
                 .apply();
     }
 
-    public static int getPoints(Context context) {
-        return context
-                .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                .getInt(KEY_POINTS, 0);
+    /**
+     * Retrieves total points for the specific user.
+     */
+    public static int getPoints(Context context, String userId) {
+        if (userId == null) return 0;
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getInt(KEY_PREFIX_POINTS + userId, 0);
     }
 
-    private static String getToday() {
-        return new SimpleDateFormat(
-                "yyyy-MM-dd",
-                Locale.US
-        ).format(new Date());
+    // Helper to get today's date string consistently
+    public static String getTodayString() {
+        return new SimpleDateFormat("yyyy-MM-dd", Locale.US).format(new Date());
     }
 }
